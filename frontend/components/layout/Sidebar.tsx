@@ -11,7 +11,8 @@ import {
   BookOpen,
   MessageCircle,
   Sparkles,
-  Command
+  Command,
+  AlertTriangle
 } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { cn } from '@/lib/utils';
@@ -20,6 +21,7 @@ import styles from './Sidebar.module.css';
 const mainNavItems = [
   { name: 'Home', href: '/', icon: Home },
   { name: 'Investigate', href: '/investigate', icon: Search },
+  { name: 'PostMortem', href: '/postmortem', icon: AlertTriangle, badge: 'NEW' },
   { name: 'Heatmap', href: '/heatmap', icon: Activity },
   { name: 'Analytics', href: '/analytics', icon: BarChart3 },
   { name: 'Settings', href: '/settings', icon: Settings },
@@ -89,6 +91,11 @@ export default function Sidebar() {
                   )}
                   <Icon className={cn(styles.navIcon, isActive && styles.active)} />
                   <span className={styles.navLabel}>{item.name}</span>
+                  {'badge' in item && item.badge && (
+                    <span className="ml-auto px-1.5 py-0.5 text-[10px] font-bold bg-primary text-white rounded">
+                      {item.badge}
+                    </span>
+                  )}
                   {isActive && (
                     <motion.div
                       initial={{ scale: 0 }}
