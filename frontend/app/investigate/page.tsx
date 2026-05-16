@@ -3,10 +3,11 @@
 import { useEffect, useState } from 'react';
 import { useAppStore } from '@/stores/useAppStore';
 import { motion, AnimatePresence } from 'framer-motion';
-import { GitBranch, Code2, Loader2, AlertCircle, CheckCircle2, Upload, Zap } from 'lucide-react';
-import { api } from '@/lib/api';
+import { GitBranch, Code2, Loader2, AlertCircle, CheckCircle2, Zap } from 'lucide-react';
 import { isValidGitUrl, generateId } from '@/lib/utils';
 import type { Analysis } from '@/types';
+import AgentPlan from '@/components/ui/agent-plan';
+import { simulateRepoAnalysis, simulateSnippetAnalysis, type AnalysisTask } from '@/lib/simulatedAnalysis';
 
 export default function InvestigatePage() {
   const setCurrentPage = useAppStore((state) => state.setCurrentPage);
@@ -21,6 +22,8 @@ export default function InvestigatePage() {
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
+  const [analysisTasks, setAnalysisTasks] = useState<AnalysisTask[]>([]);
+  const [showPlan, setShowPlan] = useState(false);
 
   useEffect(() => {
     setCurrentPage('Investigate');
@@ -29,6 +32,7 @@ export default function InvestigatePage() {
   const handleRepoAnalysis = async () => {
     setError('');
     setSuccess('');
+    setShowPlan(false);
 
     if (!repoUrl) {
       setError('Please enter a repository URL');
@@ -41,6 +45,7 @@ export default function InvestigatePage() {
     }
 
     setIsAnalyzing(true);
+    setShowPlan(true);
 
     try {
       const analysis: Analysis = {
@@ -53,9 +58,12 @@ export default function InvestigatePage() {
 
       addAnalysis(analysis);
 
-      await api.analyzeRepo(repoUrl, branch);
+      // Use simulated analysis with progress callback
+      const result = await simulateRepoAnalysis(repoUrl, branch, (tasks) => {
+        setAnalysisTasks(tasks);
+      });
 
-      setSuccess('Repository analysis started successfully!');
+      setSuccess(`Repository analysis completed! Found ${result.summary?.totalErrors} errors and ${result.summary?.totalWarnings} warnings.`);
       setRepoUrl('');
       setBranch('main');
     } catch (err) {
@@ -69,6 +77,7 @@ export default function InvestigatePage() {
   const handleSnippetAnalysis = async () => {
     setError('');
     setSuccess('');
+    setShowPlan(false);
 
     if (!code.trim()) {
       setError('Please enter code to analyze');
@@ -76,6 +85,7 @@ export default function InvestigatePage() {
     }
 
     setIsAnalyzing(true);
+    setShowPlan(true);
 
     try {
       const analysis: Analysis = {
@@ -88,9 +98,12 @@ export default function InvestigatePage() {
 
       addAnalysis(analysis);
 
-      await api.analyzeSnippet(code, language, fileName);
+      // Use simulated analysis with progress callback
+      const result = await simulateSnippetAnalysis(code, language, fileName, (tasks) => {
+        setAnalysisTasks(tasks);
+      });
 
-      setSuccess('Code snippet analysis started successfully!');
+      setSuccess(`Code analysis completed! Found ${result.summary?.totalErrors} errors and ${result.summary?.totalWarnings} warnings.`);
       setCode('');
       setFileName('');
     } catch (err) {
@@ -111,7 +124,7 @@ export default function InvestigatePage() {
           className="mb-8"
         >
           <div className="flex items-center gap-3 mb-3">
-            <div className="w-12 h-12 rounded-2xl bg-gradient-primary flex items-center justify-center shadow-glow">
+            <div className="w-12 h-12 rounded-2xl gradient-primary flex items-center justify-center shadow-glow">
               <Zap className="w-6 h-6 text-white" />
             </div>
             <div>
@@ -133,14 +146,14 @@ export default function InvestigatePage() {
           <button
             onClick={() => setActiveTab('repo')}
             className={`relative flex items-center gap-2.5 px-6 py-3.5 rounded-xl font-semibold transition-all ${activeTab === 'repo'
-                ? 'text-white'
-                : 'text-text-secondary hover:text-foreground'
+              ? 'text-white'
+              : 'text-text-secondary hover:text-foreground'
               }`}
           >
             {activeTab === 'repo' && (
               <motion.div
                 layoutId="activeTab"
-                className="absolute inset-0 bg-gradient-primary rounded-xl shadow-lg shadow-primary/30"
+                className="absolute inset-0 gradient-primary rounded-xl shadow-lg shadow-primary/30"
                 transition={{ type: "spring", bounce: 0.2, duration: 0.6 }}
               />
             )}
@@ -150,14 +163,14 @@ export default function InvestigatePage() {
           <button
             onClick={() => setActiveTab('snippet')}
             className={`relative flex items-center gap-2.5 px-6 py-3.5 rounded-xl font-semibold transition-all ${activeTab === 'snippet'
-                ? 'text-white'
-                : 'text-text-secondary hover:text-foreground'
+              ? 'text-white'
+              : 'text-text-secondary hover:text-foreground'
               }`}
           >
             {activeTab === 'snippet' && (
               <motion.div
                 layoutId="activeTab"
-                className="absolute inset-0 bg-gradient-primary rounded-xl shadow-lg shadow-primary/30"
+                className="absolute inset-0 gradient-primary rounded-xl shadow-lg shadow-primary/30"
                 transition={{ type: "spring", bounce: 0.2, duration: 0.6 }}
               />
             )}
@@ -189,6 +202,7 @@ export default function InvestigatePage() {
                     onChange={(e) => setRepoUrl(e.target.value)}
                     placeholder="https://github.com/username/repository"
                     className="w-full"
+                    disabled={isAnalyzing}
                   />
                   <p className="mt-2.5 text-sm text-text-muted flex items-center gap-2">
                     <span className="w-1 h-1 rounded-full bg-primary"></span>
@@ -206,6 +220,7 @@ export default function InvestigatePage() {
                     onChange={(e) => setBranch(e.target.value)}
                     placeholder="main"
                     className="w-full"
+                    disabled={isAnalyzing}
                   />
                 </div>
 
@@ -242,6 +257,7 @@ export default function InvestigatePage() {
                     placeholder="Paste your code here..."
                     rows={14}
                     className="w-full font-mono text-sm resize-none"
+                    disabled={isAnalyzing}
                   />
                 </div>
 
@@ -254,6 +270,7 @@ export default function InvestigatePage() {
                       value={language}
                       onChange={(e) => setLanguage(e.target.value)}
                       className="w-full"
+                      disabled={isAnalyzing}
                     >
                       <option value="javascript">JavaScript</option>
                       <option value="typescript">TypeScript</option>
@@ -276,6 +293,7 @@ export default function InvestigatePage() {
                       onChange={(e) => setFileName(e.target.value)}
                       placeholder="example.js"
                       className="w-full"
+                      disabled={isAnalyzing}
                     />
                   </div>
                 </div>
@@ -329,6 +347,26 @@ export default function InvestigatePage() {
               )}
             </AnimatePresence>
           </motion.div>
+        </AnimatePresence>
+
+        {/* Analysis Progress Plan */}
+        <AnimatePresence>
+          {showPlan && analysisTasks.length > 0 && (
+            <motion.div
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -20 }}
+              className="mt-8"
+            >
+              <div className="mb-4">
+                <h3 className="text-xl font-bold text-foreground mb-2">Analysis Progress</h3>
+                <p className="text-sm text-text-secondary">
+                  Watch as Bob analyzes your code step by step
+                </p>
+              </div>
+              <AgentPlan tasks={analysisTasks} />
+            </motion.div>
+          )}
         </AnimatePresence>
 
         {/* Info Cards */}
