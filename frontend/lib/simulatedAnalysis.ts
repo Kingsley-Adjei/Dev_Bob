@@ -419,6 +419,195 @@ export async function simulateSnippetAnalysis(
   };
 }
 
+// Simulate file upload analysis (screenshot or code file)
+export async function simulateFileAnalysis(
+  file: File,
+  onProgress?: (tasks: AnalysisTask[]) => void
+): Promise<AnalysisResult> {
+  const isImage = file.type.startsWith('image/');
+  const tasks: AnalysisTask[] = [
+    {
+      id: '1',
+      title: 'Processing File',
+      description: `Analyzing uploaded ${isImage ? 'screenshot' : 'file'}: ${file.name}`,
+      status: 'pending',
+      priority: 'high',
+      level: 0,
+      dependencies: [],
+      subtasks: [
+        {
+          id: '1.1',
+          title: 'Validating file',
+          description: 'Checking file type and size',
+          status: 'pending',
+          priority: 'high',
+          tools: ['file-validator', 'mime-detector'],
+        },
+        ...(isImage ? [
+          {
+            id: '1.2',
+            title: 'Extracting text from image',
+            description: 'Using OCR to extract code from screenshot',
+            status: 'pending' as const,
+            priority: 'high',
+            tools: ['tesseract-ocr', 'image-processor'],
+          },
+          {
+            id: '1.3',
+            title: 'Cleaning extracted text',
+            description: 'Removing noise and formatting extracted code',
+            status: 'pending' as const,
+            priority: 'medium',
+            tools: ['text-cleaner', 'formatter'],
+          },
+        ] : [
+          {
+            id: '1.2',
+            title: 'Reading file content',
+            description: 'Extracting code from file',
+            status: 'pending' as const,
+            priority: 'high',
+            tools: ['file-reader', 'encoding-detector'],
+          },
+        ]),
+      ],
+    },
+    {
+      id: '2',
+      title: 'Language Detection',
+      description: 'Identifying programming language',
+      status: 'pending',
+      priority: 'high',
+      level: 0,
+      dependencies: ['1'],
+      subtasks: [
+        {
+          id: '2.1',
+          title: 'Analyzing syntax patterns',
+          description: 'Detecting language from code structure',
+          status: 'pending',
+          priority: 'high',
+          tools: ['language-detector', 'syntax-analyzer'],
+        },
+        {
+          id: '2.2',
+          title: 'Confirming language',
+          description: 'Validating detected language with confidence score',
+          status: 'pending',
+          priority: 'medium',
+          tools: ['ml-classifier', 'confidence-scorer'],
+        },
+      ],
+    },
+    {
+      id: '3',
+      title: 'Code Analysis',
+      description: 'Analyzing code for errors and bugs',
+      status: 'pending',
+      priority: 'high',
+      level: 1,
+      dependencies: ['2'],
+      subtasks: [
+        {
+          id: '3.1',
+          title: 'Syntax validation',
+          description: 'Checking for syntax errors',
+          status: 'pending',
+          priority: 'high',
+          tools: ['parser', 'syntax-checker'],
+        },
+        {
+          id: '3.2',
+          title: 'Logic error detection',
+          description: 'Finding logical bugs and issues',
+          status: 'pending',
+          priority: 'high',
+          tools: ['ai-analyzer', 'bug-detector'],
+        },
+        {
+          id: '3.3',
+          title: 'Security scan',
+          description: 'Checking for security vulnerabilities',
+          status: 'pending',
+          priority: 'medium',
+          tools: ['security-scanner', 'vulnerability-detector'],
+        },
+      ],
+    },
+    {
+      id: '4',
+      title: 'Generating Fix Suggestions',
+      description: 'Creating AI-powered solutions',
+      status: 'pending',
+      priority: 'medium',
+      level: 2,
+      dependencies: ['3'],
+      subtasks: [
+        {
+          id: '4.1',
+          title: 'Analyzing detected issues',
+          description: 'Understanding the root cause of problems',
+          status: 'pending',
+          priority: 'high',
+          tools: ['issue-analyzer', 'root-cause-detector'],
+        },
+        {
+          id: '4.2',
+          title: 'Generating code fixes',
+          description: 'Creating corrected code snippets',
+          status: 'pending',
+          priority: 'high',
+          tools: ['ai-fixer', 'code-generator'],
+        },
+        {
+          id: '4.3',
+          title: 'Providing explanations',
+          description: 'Explaining what was wrong and how to fix it',
+          status: 'pending',
+          priority: 'medium',
+          tools: ['explanation-generator', 'documentation-writer'],
+        },
+      ],
+    },
+  ];
+
+  // Simulate progressive analysis
+  for (let i = 0; i < tasks.length; i++) {
+    const task = tasks[i];
+    
+    task.status = 'in-progress';
+    if (onProgress) onProgress([...tasks]);
+    await delay(700);
+
+    for (let j = 0; j < task.subtasks.length; j++) {
+      const subtask = task.subtasks[j];
+      
+      subtask.status = 'in-progress';
+      if (onProgress) onProgress([...tasks]);
+      await delay(isImage && i === 0 ? 1500 : 1000); // OCR takes longer
+      
+      subtask.status = 'completed';
+      if (onProgress) onProgress([...tasks]);
+      await delay(350);
+    }
+
+    task.status = 'completed';
+    if (onProgress) onProgress([...tasks]);
+    await delay(500);
+  }
+
+  return {
+    success: true,
+    tasks,
+    summary: {
+      totalFiles: 1,
+      totalErrors: isImage ? 4 : 2,
+      totalWarnings: isImage ? 6 : 3,
+      criticalIssues: isImage ? 2 : 1,
+    },
+  };
+}
+
 function delay(ms: number): Promise<void> {
   return new Promise(resolve => setTimeout(resolve, ms));
 }

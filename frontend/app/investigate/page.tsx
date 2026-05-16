@@ -1,29 +1,32 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import { useAppStore } from '@/stores/useAppStore';
 import { motion, AnimatePresence } from 'framer-motion';
-import { GitBranch, Code2, Loader2, AlertCircle, CheckCircle2, Zap } from 'lucide-react';
+import { GitBranch, Code2, Loader2, AlertCircle, CheckCircle2, Zap, Upload, FileCode, Image as ImageIcon, X } from 'lucide-react';
 import { isValidGitUrl, generateId } from '@/lib/utils';
-import type { Analysis } from '@/types';
+import type { Analysis, FileUploadData } from '@/types';
 import AgentPlan from '@/components/ui/agent-plan';
-import { simulateRepoAnalysis, simulateSnippetAnalysis, type AnalysisTask } from '@/lib/simulatedAnalysis';
+import { simulateRepoAnalysis, simulateSnippetAnalysis, simulateFileAnalysis, type AnalysisTask } from '@/lib/simulatedAnalysis';
 
 export default function InvestigatePage() {
   const setCurrentPage = useAppStore((state) => state.setCurrentPage);
   const addAnalysis = useAppStore((state) => state.addAnalysis);
 
-  const [activeTab, setActiveTab] = useState<'repo' | 'snippet'>('repo');
+  const [activeTab, setActiveTab] = useState<'repo' | 'snippet' | 'file'>('repo');
   const [repoUrl, setRepoUrl] = useState('');
   const [branch, setBranch] = useState('main');
   const [code, setCode] = useState('');
   const [language, setLanguage] = useState('javascript');
   const [fileName, setFileName] = useState('');
+  const [uploadedFile, setUploadedFile] = useState<File | null>(null);
+  const [filePreview, setFilePreview] = useState<string | null>(null);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
   const [analysisTasks, setAnalysisTasks] = useState<AnalysisTask[]>([]);
   const [showPlan, setShowPlan] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     setCurrentPage('Investigate');
@@ -114,6 +117,102 @@ export default function InvestigatePage() {
     }
   };
 
+  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    // Validate file type
+    const validTypes = [
+      'image/png', 'image/jpeg', 'image/jpg', 'image/gif', 'image/webp',
+      'text/plain', 'text/javascript', 'text/typescript', 'text/python',
+      'application/javascript', 'application/typescript', 'application/x-python'
+    ];
+
+    if (!validTypes.includes(file.type) && !file.name.match(/\.(js|ts|py|java|cpp|c|go|rs|php|rb|swift|kt)$/i)) {
+      setError('Please upload a valid image (screenshot) or code file');
+      return;
+    }
+
+    // Validate file size (max 10MB)
+    if (file.size > 10 * 1024 * 1024) {
+      setError('File size must be less than 10MB');
+      return;
+    }
+
+    setUploadedFile(file);
+    setError('');
+
+    // Create preview for images
+    if (file.type.startsWith('image/')) {
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        setFilePreview(reader.result as string);
+      };
+      reader.readAsDataURL(file);
+    } else {
+      setFilePreview(null);
+    }
+  };
+
+  const handleFileAnalysis = async () => {
+    setError('');
+    setSuccess('');
+    setShowPlan(false);
+
+    if (!uploadedFile) {
+      setError('Please upload a file to analyze');
+      return;
+    }
+
+    setIsAnalyzing(true);
+    setShowPlan(true);
+
+    try {
+      const fileData: FileUploadData = {
+        fileName: uploadedFile.name,
+        fileType: uploadedFile.type,
+        fileSize: uploadedFile.size,
+        preview: filePreview || undefined,
+      };
+
+      const analysis: Analysis = {
+        id: generateId(),
+        type: 'file',
+        input: uploadedFile.name,
+        status: 'analyzing',
+        createdAt: new Date(),
+        fileData,
+      };
+
+      addAnalysis(analysis);
+
+      // Use simulated analysis with progress callback
+      const result = await simulateFileAnalysis(uploadedFile, (tasks) => {
+        setAnalysisTasks(tasks);
+      });
+
+      setSuccess(`File analysis completed! Found ${result.summary?.totalErrors} errors and ${result.summary?.totalWarnings} warnings.`);
+      setUploadedFile(null);
+      setFilePreview(null);
+      if (fileInputRef.current) {
+        fileInputRef.current.value = '';
+      }
+    } catch (err) {
+      setError('Failed to analyze file. Please try again.');
+      console.error(err);
+    } finally {
+      setIsAnalyzing(false);
+    }
+  };
+
+  const removeFile = () => {
+    setUploadedFile(null);
+    setFilePreview(null);
+    if (fileInputRef.current) {
+      fileInputRef.current.value = '';
+    }
+  };
+
   return (
     <div className="min-h-full bg-background p-8">
       <div className="max-w-5xl mx-auto">
@@ -176,6 +275,23 @@ export default function InvestigatePage() {
             )}
             <Code2 className="w-5 h-5 relative z-10" />
             <span className="relative z-10">Code Snippet</span>
+          </button>
+          <button
+            onClick={() => setActiveTab('file')}
+            className={`relative flex items-center gap-2.5 px-6 py-3.5 rounded-xl font-semibold transition-all ${activeTab === 'file'
+              ? 'text-white'
+              : 'text-text-secondary hover:text-foreground'
+              }`}
+          >
+            {activeTab === 'file' && (
+              <motion.div
+                layoutId="activeTab"
+                className="absolute inset-0 gradient-primary rounded-xl shadow-lg shadow-primary/30"
+                transition={{ type: "spring", bounce: 0.2, duration: 0.6 }}
+              />
+            )}
+            <Upload className="w-5 h-5 relative z-10" />
+            <span className="relative z-10">Upload File</span>
           </button>
         </motion.div>
 
@@ -244,7 +360,7 @@ export default function InvestigatePage() {
                   )}
                 </motion.button>
               </div>
-            ) : (
+            ) : activeTab === 'snippet' ? (
               <div className="space-y-6">
                 <div>
                   <label className="block text-sm font-semibold text-foreground mb-3 flex items-center gap-2">
@@ -314,6 +430,154 @@ export default function InvestigatePage() {
                     <>
                       <Code2 className="w-5 h-5" />
                       Analyze Code
+                    </>
+                  )}
+                </motion.button>
+              </div>
+            ) : (
+              <div className="space-y-6">
+                <div>
+                  <label className="block text-sm font-semibold text-foreground mb-3 flex items-center gap-2">
+                    <Upload className="w-4 h-4 text-primary" />
+                    Upload File or Screenshot *
+                  </label>
+
+                  {/* File Upload Area */}
+                  <div
+                    onClick={() => fileInputRef.current?.click()}
+                    onDragOver={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                    }}
+                    onDrop={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      const file = e.dataTransfer.files[0];
+                      if (file && fileInputRef.current) {
+                        const dataTransfer = new DataTransfer();
+                        dataTransfer.items.add(file);
+                        fileInputRef.current.files = dataTransfer.files;
+                        handleFileUpload({ target: fileInputRef.current } as React.ChangeEvent<HTMLInputElement>);
+                      }
+                    }}
+                    className={`relative border-2 border-dashed rounded-2xl p-8 text-center cursor-pointer transition-all ${uploadedFile
+                      ? 'border-primary bg-primary/5'
+                      : 'border-border hover:border-primary/50 hover:bg-surface'
+                      } ${isAnalyzing ? 'opacity-50 cursor-not-allowed' : ''}`}
+                  >
+                    <input
+                      ref={fileInputRef}
+                      type="file"
+                      onChange={handleFileUpload}
+                      accept="image/*,.js,.ts,.py,.java,.cpp,.c,.go,.rs,.php,.rb,.swift,.kt,.txt"
+                      className="hidden"
+                      disabled={isAnalyzing}
+                    />
+
+                    {uploadedFile ? (
+                      <div className="space-y-4">
+                        {/* File Preview */}
+                        {filePreview ? (
+                          <div className="relative inline-block">
+                            <img
+                              src={filePreview}
+                              alt="Preview"
+                              className="max-h-64 rounded-xl border border-border shadow-lg"
+                            />
+                            {!isAnalyzing && (
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  removeFile();
+                                }}
+                                className="absolute -top-2 -right-2 w-8 h-8 bg-error text-white rounded-full flex items-center justify-center hover:bg-error/80 transition-colors shadow-lg"
+                              >
+                                <X className="w-4 h-4" />
+                              </button>
+                            )}
+                          </div>
+                        ) : (
+                          <div className="flex items-center justify-center gap-3 p-4 bg-surface rounded-xl border border-border">
+                            <FileCode className="w-8 h-8 text-primary" />
+                            <div className="text-left">
+                              <p className="font-semibold text-foreground">{uploadedFile.name}</p>
+                              <p className="text-sm text-text-muted">
+                                {(uploadedFile.size / 1024).toFixed(2)} KB
+                              </p>
+                            </div>
+                            {!isAnalyzing && (
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  removeFile();
+                                }}
+                                className="ml-auto w-8 h-8 bg-error/10 text-error rounded-lg flex items-center justify-center hover:bg-error/20 transition-colors"
+                              >
+                                <X className="w-4 h-4" />
+                              </button>
+                            )}
+                          </div>
+                        )}
+
+                        <p className="text-sm text-success font-medium flex items-center justify-center gap-2">
+                          <CheckCircle2 className="w-4 h-4" />
+                          File ready for analysis
+                        </p>
+                      </div>
+                    ) : (
+                      <div className="space-y-4">
+                        <div className="flex justify-center">
+                          <div className="w-16 h-16 rounded-2xl bg-primary/10 flex items-center justify-center">
+                            <Upload className="w-8 h-8 text-primary" />
+                          </div>
+                        </div>
+                        <div>
+                          <p className="text-lg font-semibold text-foreground mb-2">
+                            Drop your file here or click to browse
+                          </p>
+                          <p className="text-sm text-text-muted">
+                            Supports screenshots (PNG, JPG, GIF, WebP) and code files
+                          </p>
+                        </div>
+                        <div className="flex items-center justify-center gap-4 text-xs text-text-muted">
+                          <div className="flex items-center gap-1.5">
+                            <ImageIcon className="w-4 h-4" />
+                            <span>Screenshots</span>
+                          </div>
+                          <div className="w-1 h-1 rounded-full bg-text-muted"></div>
+                          <div className="flex items-center gap-1.5">
+                            <FileCode className="w-4 h-4" />
+                            <span>Code Files</span>
+                          </div>
+                          <div className="w-1 h-1 rounded-full bg-text-muted"></div>
+                          <span>Max 10MB</span>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+
+                  <p className="mt-2.5 text-sm text-text-muted flex items-center gap-2">
+                    <span className="w-1 h-1 rounded-full bg-primary"></span>
+                    Upload a screenshot of code or a code file to analyze for bugs and errors
+                  </p>
+                </div>
+
+                <motion.button
+                  whileHover={{ scale: 1.01 }}
+                  whileTap={{ scale: 0.99 }}
+                  onClick={handleFileAnalysis}
+                  disabled={isAnalyzing || !uploadedFile}
+                  className="w-full btn-primary py-4 text-base flex items-center justify-center gap-3 disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  {isAnalyzing ? (
+                    <>
+                      <Loader2 className="w-5 h-5 animate-spin" />
+                      Analyzing File...
+                    </>
+                  ) : (
+                    <>
+                      <Upload className="w-5 h-5" />
+                      Analyze File
                     </>
                   )}
                 </motion.button>

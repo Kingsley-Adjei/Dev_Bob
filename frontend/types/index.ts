@@ -9,12 +9,21 @@ export interface NavItem {
 // Analysis types
 export interface Analysis {
   id: string;
-  type: 'repo' | 'snippet';
+  type: 'repo' | 'snippet' | 'file';
   input: string;
   status: 'pending' | 'analyzing' | 'completed' | 'error';
   result?: AnalysisResult;
   createdAt: Date;
   completedAt?: Date;
+  fileData?: FileUploadData;
+}
+
+export interface FileUploadData {
+  fileName: string;
+  fileType: string;
+  fileSize: number;
+  preview?: string; // Base64 preview for images
+  extractedText?: string; // OCR text from screenshots
 }
 
 export interface AnalysisResult {

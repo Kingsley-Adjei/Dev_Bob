@@ -55,6 +55,19 @@ export const api = {
     return response.data;
   },
 
+  // Analyze uploaded file (screenshot or code file)
+  analyzeFile: async (file: File) => {
+    const formData = new FormData();
+    formData.append('file', file);
+    
+    const response = await apiClient.post('/analyze/file', formData, {
+      headers: {
+        'Content-Type': 'multipart/form-data',
+      },
+    });
+    return response.data;
+  },
+
   // Get analysis by ID
   getAnalysis: async (id: string) => {
     const response = await apiClient.get(`/analysis/${id}`);
