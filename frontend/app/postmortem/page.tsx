@@ -6,13 +6,11 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { AlertTriangle, Loader2, AlertCircle, CheckCircle2, Zap, Activity } from 'lucide-react';
 import { generateId } from '@/lib/utils';
 import type { Analysis, PostMortemData } from '@/types';
-import AgentPlan from '@/components/ui/agent-plan';
 import RootCauseDisplay from '@/components/postmortem/RootCauseDisplay';
 import FixSuggestionsDisplay from '@/components/postmortem/FixSuggestionsDisplay';
 import PostMortemReportDisplay from '@/components/postmortem/PostMortemReportDisplay';
 import SimilarIncidentsDisplay from '@/components/postmortem/SimilarIncidentsDisplay';
-import { simulatePostMortemAnalysis } from '@/lib/simulatedPostMortem';
-import type { AnalysisTask } from '@/lib/simulatedAnalysis';
+import { api } from '@/lib/api';
 
 export default function PostMortemPage() {
   const setCurrentPage = useAppStore((state) => state.setCurrentPage);
@@ -24,8 +22,6 @@ export default function PostMortemPage() {
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
-  const [analysisTasks, setAnalysisTasks] = useState<AnalysisTask[]>([]);
-  const [showPlan, setShowPlan] = useState(false);
   const [postMortemData, setPostMortemData] = useState<PostMortemData | null>(null);
 
   useEffect(() => {
@@ -50,7 +46,6 @@ Revenue impact: ~$47,000`);
   const handlePostMortemAnalysis = async () => {
     setError('');
     setSuccess('');
-    setShowPlan(false);
     setPostMortemData(null);
 
     if (!errorLog.trim()) {
@@ -59,7 +54,6 @@ Revenue impact: ~$47,000`);
     }
 
     setIsAnalyzing(true);
-    setShowPlan(true);
 
     try {
       const analysis: Analysis = {
@@ -77,16 +71,16 @@ Revenue impact: ~$47,000`);
 
       addAnalysis(analysis);
 
-      // Run PostMortem analysis
-      const result = await simulatePostMortemAnalysis(errorLog, repoUrl, (tasks) => {
-        setAnalysisTasks(tasks);
-      });
+      // Call real backend API for PostMortem analysis
+      const result = await api.analyzePostMortem(errorLog, repoUrl || undefined, environment);
 
       setPostMortemData(result);
       setSuccess('PostMortem analysis completed! Root cause identified and fixes generated.');
-    } catch (err) {
-      setError('Failed to analyze error. Please try again.');
-      console.error(err);
+    } catch (err: unknown) {
+      const error = err as { response?: { data?: { detail?: string } }; message?: string };
+      const errorMessage = error.response?.data?.detail || error.message || 'Failed to analyze error';
+      setError(`Error: ${errorMessage}. Please check your API key and try again.`);
+      console.error('PostMortem analysis error:', err);
     } finally {
       setIsAnalyzing(false);
     }
@@ -243,24 +237,24 @@ TypeError: Cannot read property 'price' of undefined
           </div>
         </motion.div>
 
-        {/* Analysis Progress */}
+        {/* Analysis in Progress Indicator */}
         <AnimatePresence>
-          {showPlan && analysisTasks.length > 0 && (
+          {isAnalyzing && (
             <motion.div
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0, y: -20 }}
               className="mb-8"
             >
-              <div className="mb-4">
+              <div className="card p-8 shadow-xl text-center">
+                <Loader2 className="w-12 h-12 animate-spin text-primary mx-auto mb-4" />
                 <h3 className="text-xl font-bold text-foreground mb-2">
-                  Bob's Investigation Progress
+                  Analyzing Production Error...
                 </h3>
                 <p className="text-sm text-text-secondary">
-                  Watch as Bob analyzes your error through 6 layers of intelligence
+                  Bob is investigating your error through 6 layers of intelligence
                 </p>
               </div>
-              <AgentPlan tasks={analysisTasks} />
             </motion.div>
           )}
         </AnimatePresence>

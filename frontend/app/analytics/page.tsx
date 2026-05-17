@@ -1,42 +1,86 @@
 'use client';
 
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { useAppStore } from '@/stores/useAppStore';
 import { motion } from 'framer-motion';
-import { TrendingUp, TrendingDown, Activity, CheckCircle2, AlertCircle, Clock, BarChart3 } from 'lucide-react';
+import { TrendingUp, TrendingDown, Activity, CheckCircle2, AlertCircle, Clock, BarChart3, Loader2 } from 'lucide-react';
 import { LineChart, Line, BarChart, Bar, PieChart, Pie, Cell, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from 'recharts';
-
-// Mock data
-const timeSeriesData = [
-  { date: 'Jan 1', analyses: 12, errors: 45, fixes: 38 },
-  { date: 'Jan 8', analyses: 18, errors: 52, fixes: 48 },
-  { date: 'Jan 15', analyses: 25, errors: 38, fixes: 35 },
-  { date: 'Jan 22', analyses: 32, errors: 28, fixes: 26 },
-  { date: 'Jan 29', analyses: 28, errors: 22, fixes: 20 },
-  { date: 'Feb 5', analyses: 35, errors: 18, fixes: 17 },
-];
-
-const errorTypeData = [
-  { type: 'Syntax', count: 45 },
-  { type: 'Type', count: 38 },
-  { type: 'Logic', count: 30 },
-  { type: 'Runtime', count: 22 },
-  { type: 'Other', count: 15 },
-];
-
-const fileTypeData = [
-  { name: 'TypeScript', value: 45, color: '#8b5cf6' },
-  { name: 'JavaScript', value: 30, color: '#f59e0b' },
-  { name: 'Python', value: 15, color: '#22c55e' },
-  { name: 'Java', value: 10, color: '#3b82f6' },
-];
+import { api } from '@/lib/api';
+import type { AnalyticsData } from '@/types';
 
 export default function AnalyticsPage() {
   const setCurrentPage = useAppStore((state) => state.setCurrentPage);
+  const [analyticsData, setAnalyticsData] = useState<AnalyticsData | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState('');
+
+  const loadAnalytics = async () => {
+    setIsLoading(true);
+    setError('');
+    try {
+      const data = await api.getAnalytics();
+      setAnalyticsData(data);
+    } catch (err: unknown) {
+      const error = err as { response?: { data?: { detail?: string } }; message?: string };
+      const errorMessage = error.response?.data?.detail || error.message || 'Failed to load analytics';
+      setError(errorMessage);
+      console.error('Analytics load error:', err);
+    } finally {
+      setIsLoading(false);
+    }
+  };
 
   useEffect(() => {
     setCurrentPage('Analytics');
   }, [setCurrentPage]);
+
+  useEffect(() => {
+    loadAnalytics();
+  }, []);
+
+  if (isLoading) {
+    return (
+      <div className="min-h-full bg-background p-8 flex items-center justify-center">
+        <div className="text-center">
+          <Loader2 className="w-12 h-12 animate-spin text-primary mx-auto mb-4" />
+          <p className="text-text-secondary">Loading analytics...</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="min-h-full bg-background p-8">
+        <div className="max-w-2xl mx-auto">
+          <div className="card p-8 text-center">
+            <AlertCircle className="w-12 h-12 text-error mx-auto mb-4" />
+            <h3 className="text-xl font-bold text-foreground mb-2">Failed to Load Analytics</h3>
+            <p className="text-text-secondary mb-4">{error}</p>
+            <button onClick={loadAnalytics} className="btn-primary">
+              Try Again
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  if (!analyticsData) {
+    return null;
+  }
+
+  // Transform backend data for charts
+  const timeSeriesData = analyticsData.timeSeriesData || [];
+  const errorTypeData = (analyticsData.commonErrors || []).map(error => ({
+    type: error.type,
+    count: error.count
+  }));
+  const fileTypeData = (analyticsData.fileTypeDistribution || []).map((item, index) => ({
+    name: item.extension,
+    value: item.count,
+    color: ['#8b5cf6', '#06b6d4', '#10b981', '#f59e0b', '#ef4444'][index % 5]
+  }));
 
   return (
     <div className="min-h-full bg-background p-8">
@@ -73,11 +117,11 @@ export default function AnalyticsPage() {
                 <Activity className="w-6 h-6 text-primary" />
               </div>
             </div>
-            <div className="text-3xl font-bold text-foreground mb-2">150</div>
+            <div className="text-3xl font-bold text-foreground mb-2">{analyticsData.totalAnalyses.toLocaleString()}</div>
             <div className="text-sm text-text-secondary mb-3 font-medium">Total Analyses</div>
             <div className="flex items-center gap-2 text-sm text-success font-medium">
               <TrendingUp className="w-4 h-4" />
-              <span>+12% from last week</span>
+              <span>+{analyticsData.trends.analysesChange}% from last week</span>
             </div>
           </div>
 
@@ -87,11 +131,11 @@ export default function AnalyticsPage() {
                 <CheckCircle2 className="w-6 h-6 text-success" />
               </div>
             </div>
-            <div className="text-3xl font-bold text-foreground mb-2">94.5%</div>
+            <div className="text-3xl font-bold text-foreground mb-2">{(analyticsData.successRate * 100).toFixed(1)}%</div>
             <div className="text-sm text-text-secondary mb-3 font-medium">Success Rate</div>
             <div className="flex items-center gap-2 text-sm text-success font-medium">
               <TrendingUp className="w-4 h-4" />
-              <span>+2.3% improvement</span>
+              <span>Stable performance</span>
             </div>
           </div>
 
@@ -101,11 +145,11 @@ export default function AnalyticsPage() {
                 <AlertCircle className="w-6 h-6 text-warning" />
               </div>
             </div>
-            <div className="text-3xl font-bold text-foreground mb-2">184</div>
+            <div className="text-3xl font-bold text-foreground mb-2">{analyticsData.summary.totalFixes.toLocaleString()}</div>
             <div className="text-sm text-text-secondary mb-3 font-medium">Errors Fixed</div>
-            <div className="flex items-center gap-2 text-sm text-error font-medium">
-              <TrendingDown className="w-4 h-4" />
-              <span>-8% from last week</span>
+            <div className="flex items-center gap-2 text-sm text-success font-medium">
+              <TrendingUp className="w-4 h-4" />
+              <span>+{analyticsData.trends.fixesChange}% improvement</span>
             </div>
           </div>
 
@@ -115,11 +159,11 @@ export default function AnalyticsPage() {
                 <Clock className="w-6 h-6 text-info" />
               </div>
             </div>
-            <div className="text-3xl font-bold text-foreground mb-2">2.4m</div>
+            <div className="text-3xl font-bold text-foreground mb-2">{analyticsData.averageFixTime.toFixed(1)}m</div>
             <div className="text-sm text-text-secondary mb-3 font-medium">Avg Fix Time</div>
             <div className="flex items-center gap-2 text-sm text-success font-medium">
               <TrendingUp className="w-4 h-4" />
-              <span>15% faster</span>
+              <span>Efficient fixes</span>
             </div>
           </div>
         </motion.div>

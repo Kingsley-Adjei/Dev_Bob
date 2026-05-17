@@ -3,34 +3,57 @@
 import { useEffect, useState } from 'react';
 import { useAppStore } from '@/stores/useAppStore';
 import { motion } from 'framer-motion';
-import { Activity, FileCode, AlertTriangle, Info, TrendingUp, Flame } from 'lucide-react';
+import { Activity, FileCode, AlertTriangle, Info, TrendingUp, Flame, Loader2, Search } from 'lucide-react';
 import { getHeatmapColor } from '@/lib/utils';
+import { api } from '@/lib/api';
 
-// Mock heatmap data
-const mockHeatmapData = [
-  { file: 'src/components/Button.tsx', path: 'src/components', errorCount: 0, warningCount: 1, lastModified: new Date('2024-01-15') },
-  { file: 'src/utils/validation.ts', path: 'src/utils', errorCount: 3, warningCount: 2, lastModified: new Date('2024-01-14') },
-  { file: 'src/api/auth.ts', path: 'src/api', errorCount: 1, warningCount: 0, lastModified: new Date('2024-01-13') },
-  { file: 'src/pages/Dashboard.tsx', path: 'src/pages', errorCount: 5, warningCount: 3, lastModified: new Date('2024-01-12') },
-  { file: 'src/hooks/useAuth.ts', path: 'src/hooks', errorCount: 0, warningCount: 0, lastModified: new Date('2024-01-11') },
-  { file: 'src/components/Modal.tsx', path: 'src/components', errorCount: 2, warningCount: 1, lastModified: new Date('2024-01-10') },
-  { file: 'src/utils/format.ts', path: 'src/utils', errorCount: 1, warningCount: 2, lastModified: new Date('2024-01-09') },
-  { file: 'src/api/users.ts', path: 'src/api', errorCount: 4, warningCount: 1, lastModified: new Date('2024-01-08') },
-  { file: 'src/components/Table.tsx', path: 'src/components', errorCount: 0, warningCount: 2, lastModified: new Date('2024-01-07') },
-  { file: 'src/pages/Settings.tsx', path: 'src/pages', errorCount: 2, warningCount: 0, lastModified: new Date('2024-01-06') },
-];
+interface HeatmapItem {
+  file: string;
+  path: string;
+  errorCount: number;
+  warningCount: number;
+  lastModified: string;
+  severity: string;
+  complexity: number;
+}
 
 export default function HeatmapPage() {
   const setCurrentPage = useAppStore((state) => state.setCurrentPage);
   const [selectedFile, setSelectedFile] = useState<string | null>(null);
+  const [heatmapData, setHeatmapData] = useState<HeatmapItem[]>([]);
+  const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState('');
+  const [repoUrl, setRepoUrl] = useState('');
+  const [branch, setBranch] = useState('main');
 
   useEffect(() => {
     setCurrentPage('Heatmap');
   }, [setCurrentPage]);
 
-  const totalErrors = mockHeatmapData.reduce((sum, item) => sum + item.errorCount, 0);
-  const totalWarnings = mockHeatmapData.reduce((sum, item) => sum + item.warningCount, 0);
-  const criticalFiles = mockHeatmapData.filter(item => item.errorCount > 3).length;
+  const generateHeatmap = async () => {
+    if (!repoUrl.trim()) {
+      setError('Please enter a repository URL');
+      return;
+    }
+
+    setIsLoading(true);
+    setError('');
+    try {
+      const result = await api.getHeatmap(repoUrl, branch);
+      setHeatmapData(result);
+    } catch (err: unknown) {
+      const error = err as { response?: { data?: { detail?: string } }; message?: string };
+      const errorMessage = error.response?.data?.detail || error.message || 'Failed to generate heatmap';
+      setError(errorMessage);
+      console.error('Heatmap generation error:', err);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const totalErrors = heatmapData.reduce((sum, item) => sum + item.errorCount, 0);
+  const totalWarnings = heatmapData.reduce((sum, item) => sum + item.warningCount, 0);
+  const criticalFiles = heatmapData.filter(item => item.errorCount > 3).length;
 
   return (
     <div className="min-h-full bg-background p-8">
@@ -53,6 +76,73 @@ export default function HeatmapPage() {
             </div>
           </div>
         </motion.div>
+
+        {/* Input Section */}
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.1 }}
+          className="card p-6 mb-8"
+        >
+          <div className="flex gap-4">
+            <div className="flex-1">
+              <input
+                type="text"
+                value={repoUrl}
+                onChange={(e) => setRepoUrl(e.target.value)}
+                placeholder="Enter repository URL (e.g., https://github.com/user/repo)"
+                className="w-full px-4 py-3 bg-surface-elevated border border-border rounded-xl text-foreground placeholder-text-muted focus:outline-none focus:ring-2 focus:ring-primary/50 focus:border-primary transition-all"
+                onKeyDown={(e) => e.key === 'Enter' && generateHeatmap()}
+              />
+            </div>
+            <div className="w-32">
+              <input
+                type="text"
+                value={branch}
+                onChange={(e) => setBranch(e.target.value)}
+                placeholder="Branch"
+                className="w-full px-4 py-3 bg-surface-elevated border border-border rounded-xl text-foreground placeholder-text-muted focus:outline-none focus:ring-2 focus:ring-primary/50 focus:border-primary transition-all"
+              />
+            </div>
+            <button
+              onClick={generateHeatmap}
+              disabled={isLoading}
+              className="btn-primary px-6 py-3 flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              {isLoading ? (
+                <>
+                  <Loader2 className="w-5 h-5 animate-spin" />
+                  Generating...
+                </>
+              ) : (
+                <>
+                  <Search className="w-5 h-5" />
+                  Generate Heatmap
+                </>
+              )}
+            </button>
+          </div>
+          {error && (
+            <div className="mt-4 p-4 bg-error/10 border border-error/20 rounded-xl">
+              <p className="text-sm text-error">{error}</p>
+            </div>
+          )}
+        </motion.div>
+
+        {heatmapData.length === 0 && !isLoading && !error && (
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.2 }}
+            className="card p-12 text-center"
+          >
+            <Flame className="w-16 h-16 text-text-muted mx-auto mb-4" />
+            <h3 className="text-xl font-bold text-foreground mb-2">No Heatmap Data</h3>
+            <p className="text-text-secondary">
+              Enter a repository URL above to generate an error heatmap visualization
+            </p>
+          </motion.div>
+        )}
 
         {/* Stats Cards */}
         <motion.div
@@ -145,7 +235,7 @@ export default function HeatmapPage() {
           </div>
 
           <div className="space-y-3">
-            {mockHeatmapData.map((item, index) => (
+            {heatmapData.map((item, index) => (
               <motion.div
                 key={item.file}
                 initial={{ opacity: 0, x: -20 }}
@@ -180,7 +270,7 @@ export default function HeatmapPage() {
                   </div>
 
                   <div className="text-sm text-text-secondary font-medium px-4 py-2 bg-surface rounded-lg">
-                    {item.lastModified.toLocaleDateString()}
+                    {new Date(item.lastModified).toLocaleDateString()}
                   </div>
                 </div>
               </motion.div>

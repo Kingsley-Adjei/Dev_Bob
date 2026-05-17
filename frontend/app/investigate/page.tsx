@@ -5,9 +5,9 @@ import { useAppStore } from '@/stores/useAppStore';
 import { motion, AnimatePresence } from 'framer-motion';
 import { GitBranch, Code2, Loader2, AlertCircle, CheckCircle2, Zap, Upload, FileCode, Image as ImageIcon, X } from 'lucide-react';
 import { isValidGitUrl, generateId } from '@/lib/utils';
-import type { Analysis, FileUploadData } from '@/types';
+import type { Analysis, FileUploadData, AnalysisResult } from '@/types';
 import AgentPlan from '@/components/ui/agent-plan';
-import { simulateRepoAnalysis, simulateSnippetAnalysis, simulateFileAnalysis, type AnalysisTask } from '@/lib/simulatedAnalysis';
+import { api } from '@/lib/api';
 
 export default function InvestigatePage() {
   const setCurrentPage = useAppStore((state) => state.setCurrentPage);
@@ -24,8 +24,7 @@ export default function InvestigatePage() {
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
-  const [analysisTasks, setAnalysisTasks] = useState<AnalysisTask[]>([]);
-  const [showPlan, setShowPlan] = useState(false);
+  const [analysisResult, setAnalysisResult] = useState<AnalysisResult | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -35,7 +34,7 @@ export default function InvestigatePage() {
   const handleRepoAnalysis = async () => {
     setError('');
     setSuccess('');
-    setShowPlan(false);
+    setAnalysisResult(null);
 
     if (!repoUrl) {
       setError('Please enter a repository URL');
@@ -48,7 +47,6 @@ export default function InvestigatePage() {
     }
 
     setIsAnalyzing(true);
-    setShowPlan(true);
 
     try {
       const analysis: Analysis = {
@@ -61,17 +59,18 @@ export default function InvestigatePage() {
 
       addAnalysis(analysis);
 
-      // Use simulated analysis with progress callback
-      const result = await simulateRepoAnalysis(repoUrl, branch, (tasks) => {
-        setAnalysisTasks(tasks);
-      });
+      // Call real backend API
+      const result = await api.analyzeRepo(repoUrl, branch);
 
-      setSuccess(`Repository analysis completed! Found ${result.summary?.totalErrors} errors and ${result.summary?.totalWarnings} warnings.`);
+      setAnalysisResult(result);
+      setSuccess(`Repository analysis completed! Found ${result.summary.totalErrors} errors and ${result.summary.totalWarnings} warnings.`);
       setRepoUrl('');
       setBranch('main');
-    } catch (err) {
-      setError('Failed to analyze repository. Please try again.');
-      console.error(err);
+    } catch (err: unknown) {
+      const error = err as { response?: { data?: { detail?: string } }; message?: string };
+      const errorMessage = error.response?.data?.detail || error.message || 'Failed to analyze repository';
+      setError(`Error: ${errorMessage}. Please check your API key and try again.`);
+      console.error('Repository analysis error:', err);
     } finally {
       setIsAnalyzing(false);
     }
@@ -80,7 +79,7 @@ export default function InvestigatePage() {
   const handleSnippetAnalysis = async () => {
     setError('');
     setSuccess('');
-    setShowPlan(false);
+    setAnalysisResult(null);
 
     if (!code.trim()) {
       setError('Please enter code to analyze');
@@ -88,7 +87,6 @@ export default function InvestigatePage() {
     }
 
     setIsAnalyzing(true);
-    setShowPlan(true);
 
     try {
       const analysis: Analysis = {
@@ -101,17 +99,18 @@ export default function InvestigatePage() {
 
       addAnalysis(analysis);
 
-      // Use simulated analysis with progress callback
-      const result = await simulateSnippetAnalysis(code, language, fileName, (tasks) => {
-        setAnalysisTasks(tasks);
-      });
+      // Call real backend API
+      const result = await api.analyzeSnippet(code, language, fileName);
 
-      setSuccess(`Code analysis completed! Found ${result.summary?.totalErrors} errors and ${result.summary?.totalWarnings} warnings.`);
+      setAnalysisResult(result);
+      setSuccess(`Code analysis completed! Found ${result.summary.totalErrors} errors and ${result.summary.totalWarnings} warnings.`);
       setCode('');
       setFileName('');
-    } catch (err) {
-      setError('Failed to analyze code snippet. Please try again.');
-      console.error(err);
+    } catch (err: unknown) {
+      const error = err as { response?: { data?: { detail?: string } }; message?: string };
+      const errorMessage = error.response?.data?.detail || error.message || 'Failed to analyze code snippet';
+      setError(`Error: ${errorMessage}. Please check your API key and try again.`);
+      console.error('Snippet analysis error:', err);
     } finally {
       setIsAnalyzing(false);
     }
@@ -157,7 +156,7 @@ export default function InvestigatePage() {
   const handleFileAnalysis = async () => {
     setError('');
     setSuccess('');
-    setShowPlan(false);
+    setAnalysisResult(null);
 
     if (!uploadedFile) {
       setError('Please upload a file to analyze');
@@ -165,7 +164,6 @@ export default function InvestigatePage() {
     }
 
     setIsAnalyzing(true);
-    setShowPlan(true);
 
     try {
       const fileData: FileUploadData = {
@@ -186,20 +184,21 @@ export default function InvestigatePage() {
 
       addAnalysis(analysis);
 
-      // Use simulated analysis with progress callback
-      const result = await simulateFileAnalysis(uploadedFile, (tasks) => {
-        setAnalysisTasks(tasks);
-      });
+      // Call real backend API
+      const result = await api.analyzeFile(uploadedFile);
 
-      setSuccess(`File analysis completed! Found ${result.summary?.totalErrors} errors and ${result.summary?.totalWarnings} warnings.`);
+      setAnalysisResult(result);
+      setSuccess(`File analysis completed! Found ${result.summary.totalErrors} errors and ${result.summary.totalWarnings} warnings.`);
       setUploadedFile(null);
       setFilePreview(null);
       if (fileInputRef.current) {
         fileInputRef.current.value = '';
       }
-    } catch (err) {
-      setError('Failed to analyze file. Please try again.');
-      console.error(err);
+    } catch (err: unknown) {
+      const error = err as { response?: { data?: { detail?: string } }; message?: string };
+      const errorMessage = error.response?.data?.detail || error.message || 'Failed to analyze file';
+      setError(`Error: ${errorMessage}. Please check your API key and try again.`);
+      console.error('File analysis error:', err);
     } finally {
       setIsAnalyzing(false);
     }
@@ -613,22 +612,83 @@ export default function InvestigatePage() {
           </motion.div>
         </AnimatePresence>
 
-        {/* Analysis Progress Plan */}
+        {/* Analysis Results */}
         <AnimatePresence>
-          {showPlan && analysisTasks.length > 0 && (
+          {analysisResult && (
             <motion.div
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0, y: -20 }}
               className="mt-8"
             >
-              <div className="mb-4">
-                <h3 className="text-xl font-bold text-foreground mb-2">Analysis Progress</h3>
-                <p className="text-sm text-text-secondary">
-                  Watch as Bob analyzes your code step by step
-                </p>
+              <div className="card p-8 shadow-xl">
+                <h3 className="text-xl font-bold text-foreground mb-6">Analysis Results</h3>
+
+                {/* Summary Stats */}
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+                  <div className="p-4 bg-surface-elevated rounded-xl">
+                    <div className="text-2xl font-bold text-foreground mb-1">
+                      {analysisResult.summary.filesAnalyzed}
+                    </div>
+                    <div className="text-sm text-text-muted">Files Analyzed</div>
+                  </div>
+                  <div className="p-4 bg-surface-elevated rounded-xl">
+                    <div className="text-2xl font-bold text-error mb-1">
+                      {analysisResult.summary.totalErrors}
+                    </div>
+                    <div className="text-sm text-text-muted">Errors Found</div>
+                  </div>
+                  <div className="p-4 bg-surface-elevated rounded-xl">
+                    <div className="text-2xl font-bold text-warning mb-1">
+                      {analysisResult.summary.totalWarnings}
+                    </div>
+                    <div className="text-sm text-text-muted">Warnings</div>
+                  </div>
+                  <div className="p-4 bg-surface-elevated rounded-xl">
+                    <div className="text-2xl font-bold text-success mb-1">
+                      {analysisResult.summary.successRate.toFixed(1)}%
+                    </div>
+                    <div className="text-sm text-text-muted">Success Rate</div>
+                  </div>
+                </div>
+
+                {/* Errors List */}
+                {analysisResult.errors.length > 0 && (
+                  <div className="mb-6">
+                    <h4 className="font-semibold text-foreground mb-3">Detected Errors</h4>
+                    <div className="space-y-2">
+                      {analysisResult.errors.slice(0, 5).map((error) => (
+                        <div key={error.id} className="p-4 bg-surface-elevated rounded-xl border border-border">
+                          <div className="flex items-start gap-3">
+                            <AlertCircle className={`w-5 h-5 mt-0.5 ${error.severity === 'error' ? 'text-error' : 'text-warning'}`} />
+                            <div className="flex-1">
+                              <div className="font-medium text-foreground mb-1">{error.message}</div>
+                              <div className="text-sm text-text-muted">
+                                {error.file}:{error.line}:{error.column}
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+                      {analysisResult.errors.length > 5 && (
+                        <div className="text-sm text-text-secondary text-center py-2">
+                          And {analysisResult.errors.length - 5} more errors...
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )}
+
+                {/* Fixes Available */}
+                {analysisResult.fixes.length > 0 && (
+                  <div>
+                    <h4 className="font-semibold text-foreground mb-3">Available Fixes</h4>
+                    <div className="text-sm text-success">
+                      {analysisResult.fixes.length} AI-powered fixes generated
+                    </div>
+                  </div>
+                )}
               </div>
-              <AgentPlan tasks={analysisTasks} />
             </motion.div>
           )}
         </AnimatePresence>

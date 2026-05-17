@@ -215,6 +215,17 @@ export interface AnalyticsData {
   commonErrors: ErrorType[];
   fileTypeDistribution: FileTypeData[];
   timeSeriesData: TimeSeriesPoint[];
+  summary: {
+    totalErrors: number;
+    totalWarnings: number;
+    totalFixes: number;
+    fixSuccessRate: number;
+  };
+  trends: {
+    analysesChange: number;
+    errorsChange: number;
+    fixesChange: number;
+  };
 }
 
 export interface ErrorType {

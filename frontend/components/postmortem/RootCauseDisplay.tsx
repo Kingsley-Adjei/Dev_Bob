@@ -108,7 +108,7 @@ export default function RootCauseDisplay({ rootCause }: RootCauseDisplayProps) {
               <Calendar className="w-4 h-4 text-text-muted" />
               <span className="text-text-secondary">Date:</span>
               <span className="text-foreground font-medium">
-                {rootCause.introducedIn.date.toLocaleDateString()}
+                {new Date(rootCause.introducedIn.date).toLocaleDateString()}
               </span>
             </div>
           </div>

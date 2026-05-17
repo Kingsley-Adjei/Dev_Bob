@@ -37,7 +37,7 @@ export default function PostMortemReportDisplay({ report }: PostMortemReportDisp
     const minutes = duration % 60;
     const durationStr = hours > 0 ? `${hours}h ${minutes}m` : `${minutes} minutes`;
 
-    return `# INCIDENT REPORT — ${report.detectedAt.toLocaleString('en-US', {
+    return `# INCIDENT REPORT — ${new Date(report.detectedAt).toLocaleString('en-US', {
       month: 'short',
       day: 'numeric',
       year: 'numeric',
@@ -59,7 +59,7 @@ ${report.impact.revenueImpact ? `**REVENUE IMPACT:** ~$${report.impact.revenueIm
 ## Timeline
 
 ${report.timeline.map(event =>
-      `- **${event.timestamp.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })}** — ${event.event}${event.actor ? ` (${event.actor})` : ''}`
+      `- **${new Date(event.timestamp).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })}** — ${event.event}${event.actor ? ` (${event.actor})` : ''}`
     ).join('\n')}
 
 ## Root Cause
@@ -136,7 +136,7 @@ ${report.resolvedBy ? `**Resolved by:** ${report.resolvedBy}` : ''}
             </span>
           </div>
           <p className="text-sm text-text-secondary">
-            {report.detectedAt.toLocaleString('en-US', {
+            {new Date(report.detectedAt).toLocaleString('en-US', {
               month: 'short',
               day: 'numeric',
               year: 'numeric',
@@ -237,7 +237,7 @@ ${report.resolvedBy ? `**Resolved by:** ${report.resolvedBy}` : ''}
               </div>
               <div className="flex-1 pb-4">
                 <p className="text-sm font-semibold text-foreground mb-1">
-                  {event.timestamp.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })} — {event.event}
+                  {new Date(event.timestamp).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })} — {event.event}
                 </p>
                 {event.actor && (
                   <p className="text-xs text-text-muted">{event.actor}</p>
