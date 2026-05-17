@@ -1,11 +1,12 @@
 """
 Analysis endpoints for DevAssist API
-Handles repository, snippet, and file analysis
+Handles repository, snippet, and file analysis with REAL AI
 """
 from fastapi import APIRouter, Depends, UploadFile, File, HTTPException, status
 from typing import Optional
 import uuid
 from datetime import datetime
+import asyncio
 
 from models import (
     RepoInput, SnippetInput, AnalysisResult, Analysis,
@@ -13,7 +14,9 @@ from models import (
     FileUploadData
 )
 from auth import verify_api_key
-import mock_data
+from services.ai_service import ai_service
+from services.git_service import git_service
+from services.database_service import db_service
 
 
 router = APIRouter(
@@ -23,17 +26,13 @@ router = APIRouter(
 )
 
 
-# In-memory storage for analyses (will be replaced with database)
-ANALYSES_STORE = {}
-
-
 @router.post("/repo", response_model=AnalysisResult)
 async def analyze_repository(
     input: RepoInput,
     api_key: str = Depends(verify_api_key)
 ) -> AnalysisResult:
     """
-    Analyze entire repository
+    Analyze entire repository using REAL AI
     
     Args:
         input: Repository URL and branch
@@ -41,63 +40,100 @@ async def analyze_repository(
     Returns:
         Analysis results with errors, fixes, and heatmap data
     """
+    repo_path = None
     try:
-        # TODO: Implement actual repository cloning and analysis
-        # For now, return mock data
+        # Clone repository
+        print(f"Cloning repository: {input.url}")
+        repo_path = await git_service.clone_repository(input.url, input.branch)
         
-        # Simulate analysis
-        errors = [
-            ErrorDetail(
-                id=f"err-{uuid.uuid4().hex[:8]}",
-                file="src/main.py",
-                line=42,
-                column=10,
-                message="Undefined variable 'user_data'",
-                severity="error",
-                code="user_data.get('name')",
-                relatedFiles=["src/models.py"]
-            ),
-            ErrorDetail(
-                id=f"err-{uuid.uuid4().hex[:8]}",
-                file="src/utils.py",
-                line=15,
-                column=5,
-                message="Function 'process_data' is too complex",
-                severity="warning",
-                code="def process_data(data):",
-                relatedFiles=[]
+        # Get all code files
+        print("Reading repository files...")
+        files = await git_service.get_repository_files(repo_path)
+        
+        if not files:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="No code files found in repository"
             )
-        ]
         
-        fixes = [
-            Fix(
-                id=f"fix-{uuid.uuid4().hex[:8]}",
-                errorId=errors[0].id,
-                description="Initialize user_data before use",
-                code="user_data = get_user_data()\nif user_data:\n    name = user_data.get('name')",
-                confidence=95,
-                applied=False
+        # Analyze repository structure
+        print("Analyzing repository structure...")
+        repo_analysis = await ai_service.analyze_repository_structure(files)
+        
+        # Analyze each file with AI (limit to first 20 files for performance)
+        print(f"Analyzing {min(len(files), 20)} files with AI...")
+        all_errors = []
+        all_fixes = []
+        heatmap_data = []
+        
+        for file in files[:20]:  # Limit to 20 files
+            print(f"Analyzing {file['path']}...")
+            
+            # Analyze file with AI
+            analysis = await ai_service.analyze_code(
+                file['content'],
+                file['language'],
+                file['path']
             )
-        ]
-        
-        heatmap_data = [
-            HeatmapData(
-                file="src/main.py",
-                path="src/main.py",
-                errorCount=1,
-                warningCount=0,
+            
+            # Process errors
+            for error in analysis.get('errors', []):
+                error_id = f"err-{uuid.uuid4().hex[:8]}"
+                error_detail = ErrorDetail(
+                    id=error_id,
+                    file=file['path'],
+                    line=error.get('line', 1),
+                    column=error.get('column', 1),
+                    message=error.get('message', 'Unknown error'),
+                    severity=error.get('severity', 'error'),
+                    code=error.get('code_snippet', ''),
+                    relatedFiles=[]
+                )
+                all_errors.append(error_detail)
+                
+                # Generate fix for this error
+                fix_result = await ai_service.generate_fix(
+                    file['content'],
+                    error,
+                    file['language']
+                )
+                
+                fix = Fix(
+                    id=f"fix-{uuid.uuid4().hex[:8]}",
+                    errorId=error_id,
+                    description=fix_result.get('explanation', 'AI-generated fix'),
+                    code=fix_result.get('fixed_code', file['content']),
+                    confidence=fix_result.get('confidence', 85),
+                    applied=False
+                )
+                all_fixes.append(fix)
+            
+            # Process warnings
+            for warning in analysis.get('warnings', []):
+                warning_detail = ErrorDetail(
+                    id=f"warn-{uuid.uuid4().hex[:8]}",
+                    file=file['path'],
+                    line=warning.get('line', 1),
+                    column=warning.get('column', 1),
+                    message=warning.get('message', 'Unknown warning'),
+                    severity='warning',
+                    code=warning.get('code_snippet', ''),
+                    relatedFiles=[]
+                )
+                all_errors.append(warning_detail)
+            
+            # Build heatmap data
+            file_errors = [e for e in all_errors if e.file == file['path'] and e.severity == 'error']
+            file_warnings = [e for e in all_errors if e.file == file['path'] and e.severity == 'warning']
+            
+            heatmap_data.append(HeatmapData(
+                file=file['filename'],
+                path=file['path'],
+                errorCount=len(file_errors),
+                warningCount=len(file_warnings),
                 lastModified=datetime.utcnow(),
-                relatedChanges=["commit-abc123"]
-            ),
-            HeatmapData(
-                file="src/utils.py",
-                path="src/utils.py",
-                errorCount=0,
-                warningCount=1,
-                lastModified=datetime.utcnow(),
-                relatedChanges=["commit-def456"]
-            )
-        ]
+                relatedChanges=[]
+            ))
         
         summary = AnalysisSummary(
             totalErrors=1,
